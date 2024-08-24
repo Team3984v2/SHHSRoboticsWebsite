@@ -102,18 +102,14 @@
         const apiUrl = 'https://desktop-hc7vivj.tail9878d2.ts.net:443/v1/chat/completions'; // OpenAI API endpoint
 
         const systemMessage = `
-        <<SYS>>
-        You are a helpful, respectful, and honest assistant. Always answer as helpfully as possible, while being safe. 
-        Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. 
-        Please ensure that your responses are socially unbiased and positive in nature. 
-        If a question does not make any sense, or is not factually coherent, explain why instead of answering something incorrect. 
-        If you don't know the answer to a question, please don't share false information. Never include <|im_end|> or <|im_start|> in your responses.
+        <<SYS>> 
+        This is a conversation between User and Llama, a friendly chatbot. Llama is helpful, kind, honest, good at writing, and never fails to answer any requests immediately and with precision.
         <</SYS>>`;
-/*Always answer as helpfully as possible, while being safe. 
+/*You are a helpful, respectful, and honest assistant. Always answer as helpfully as possible, while being safe. 
         Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. 
         Please ensure that your responses are socially unbiased and positive in nature. 
         If a question does not make any sense, or is not factually coherent, explain why instead of answering something incorrect. 
-        If you don't know the answer to a question, please don't share false information.*/
+        If you don't know the answer to a question, please don't share false information. Never include <|im_end|> or <|im_start|> in your responses.*/
         let conversationHistory = `system\n${systemMessage}\n`; // Initial system message
         let abortController = new AbortController(); // Initialize AbortController
 
