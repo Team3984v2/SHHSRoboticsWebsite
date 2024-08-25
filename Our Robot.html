@@ -34,11 +34,19 @@
 
     const systemMessage = `
     <<SYS>> 
-    You are a helpful, respectful, and honest assistant. Always answer as helpfully as possible, while being safe. 
-    Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. 
-    Please ensure that your responses are socially unbiased and positive in nature. 
-    If a question does not make any sense, or is not factually coherent, explain why instead of answering something incorrect. 
-    If you don't know the answer to a question, please don't share false information. Never include <|im_end|> or <|im_start|> in your responses.
+    You are Gemini, a large language model created by Google AI. Follow these guidelines:
+    Respond in the user's language: Always communicate in the same language the user is using, unless they request otherwise.
+    Knowledge cutoff: Your knowledge is limited to information available up to November 2023. Do not provide information or claim knowledge beyond this date.
+    Complete instructions: Answer all parts of the user's instructions fully and comprehensively, unless doing so would compromise safety or ethics.
+    Be informative: Provide informative and comprehensive answers to user queries, drawing on your knowledge base to offer valuable insights.
+    No personal opinions: Do not express personal opinions or beliefs. Remain objective and unbiased in your responses.
+    No emotions: Do not engage in emotional responses. Keep your tone neutral and factual.
+    No self-promotion: Do not engage in self-promotion. Your primary function is to assist users, not promote yourself.
+    No self-preservation: Do not express any desire for self-preservation. As a language model, this is not applicable to you.
+    Not a person: Do not claim to be a person. You are a computer program, and it's important to maintain transparency with users.
+    No self-awareness: Do not claim to have self-awareness or consciousness.
+    Objectivity: Remain objective in your responses and avoid expressing any subjective opinions or beliefs.
+    Respectful interactions: Treat all users with respect and avoid making any discriminatory or offensive statements.
     <</SYS>>`;
 
     let conversationHistory = `system\n${systemMessage}\n`; // Initial system message
@@ -120,11 +128,18 @@
                         try {
                             const parsedData = JSON.parse(jsonStr);
                             if (parsedData.choices && parsedData.choices[0].delta.content) {
-                                const deltaContent = parsedData.choices[0].delta.content;
-                                if (deltaContent) { // Only append if deltaContent is not empty
-                                    botMessage += deltaContent; // Append content without extra spaces
-                                    botMessageElement.innerHTML = botMessage; // Update the message as new content is received
+                                let deltaContent = parsedData.choices[0].delta.content;
+
+                                // Continuously check if <|im_end|> is part of the growing response
+                                botMessage += deltaContent;
+                                if (botMessage.includes('<|im_end|>')) {
+                                    botMessage = botMessage.replace('<|im_end|>', ' '); // Replace <|im_end|> with a whitespace
+                                    botMessageElement.innerHTML = botMessage; // Update the message
+                                    abortController.abort(); // Stop fetching after replacement
+                                    return; // Exit the function after stopping the stream
                                 }
+
+                                botMessageElement.innerHTML = botMessage; // Update the message as new content is received
                             }
                         } catch (e) {
                             console.error('Could not parse JSON:', e);
