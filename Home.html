@@ -21,7 +21,7 @@
         }
         </script>
         
-      
+        <link rel="stylesheet" href="gpt.css">
       </head><body dir="ltr" itemscope itemtype="http://schema.org/WebPage" id="yDmH0d" css="yDmH0d">
         
         <div id="chatbot-overlay" class="hidden">
@@ -36,7 +36,7 @@
       <div id="thought-bubble"></div>
       <script>
         const apiUrl = 'https://desktop-hc7vivj.tail9878d2.ts.net:443/v1/chat/completions'; // OpenAI API endpoint
-    
+        
         const systemMessage = `
         <<SYS>> 
         You are Cucumber, a large language model created by Team 3984, designed to tell people about First Robotics. Follow these guidelines:
@@ -53,228 +53,200 @@
         No self-awareness: Do not claim to have self-awareness or consciousness.
         Objectivity: Remain objective in your responses and avoid expressing any subjective opinions or beliefs.
         Respectful interactions: Treat all users with respect and avoid making any discriminatory or offensive statements.
-        <</SYS>>`;//At the end of every response, ask the user what they know about First Robotics.
-    
-        let conversationHistory = `system\n${systemMessage}\n`; // Initial system message
-        let abortController = new AbortController(); // Initialize AbortController
-    
-        document.getElementById('chatbot-send').addEventListener('click', sendMessage);
-        document.getElementById('chatbot-input').addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                sendMessage();
+        <</SYS>>`;
+            
+        let conversationHistory = ''; // Exclude system message from history
+    let abortController = new AbortController(); // Initialize AbortController
+
+    document.getElementById('chatbot-send').addEventListener('click', sendMessage);
+    document.getElementById('chatbot-input').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            sendMessage();
+        }
+    });
+    document.getElementById('chatbot-close').addEventListener('click', () => {
+        terminateChat(); // Call terminateChat when closing the chat box
+    });
+
+    document.getElementById('thought-bubble').addEventListener('click', () => {
+        const overlay = document.getElementById('chatbot-overlay');
+        const bubble = document.getElementById('thought-bubble');
+        overlay.style.display = 'flex'; // Show chat box
+        setTimeout(() => {
+            overlay.classList.remove('hidden');
+        }, 10);
+        bubble.style.display = 'none'; // Hide thought bubble
+    });
+
+    // Function to save conversation history in a cookie (excluding system message)
+    function saveConversationHistory() {
+        document.cookie = `conversationHistory=${encodeURIComponent(conversationHistory)}; path=/;`;
+    }
+
+    // Function to load conversation history from a cookie
+    function loadConversationHistory() {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.startsWith('conversationHistory=')) {
+                return decodeURIComponent(cookie.substring('conversationHistory='.length));
             }
-        });
-        document.getElementById('chatbot-close').addEventListener('click', () => {
-            terminateChat(); // Call terminateChat when closing the chat box
-        });
-    
-        document.getElementById('thought-bubble').addEventListener('click', () => {
-            const overlay = document.getElementById('chatbot-overlay');
-            const bubble = document.getElementById('thought-bubble');
-            overlay.style.display = 'flex'; // Show chat box
-            setTimeout(() => {
-                overlay.classList.remove('hidden');
-            }, 10);
-            bubble.style.display = 'none'; // Hide thought bubble
-        });
-    
-        async function sendMessage() {
-            const inputElement = document.getElementById('chatbot-input');
-            const userMessage = inputElement.value.trim();
-            if (userMessage === '') return;
-    
-            appendMessage('You', userMessage);
-            conversationHistory += `user\n${userMessage}\n`; // Append user message to history
-            inputElement.value = '';
-    
-            let botMessage = '';
-            let botMessageElement = appendMessage('Cucumber', ''); // Create an empty message element to update as text is received
-    
-            const promptTemplate = `[INST] ${systemMessage} {${userMessage}} [/INST]`;
-    
-            abortController = new AbortController(); // Reinitialize AbortController for each new request
-    
-            try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        //'Authorization': `Bearer ${apiKey}`,
-                    },
-                    body: JSON.stringify({
-                        model: "gpt-3.5-turbo", // You can use "gpt-4" if available in your OpenAI account
-                        messages: [
-                            { role: "system", content: systemMessage },
-                            { role: "user", content: userMessage }
-                        ],
-                        stream: true
-                    }),
-                    signal: abortController.signal // Pass the abort signal
-                });
-    
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let done = false;
-    
-                while (!done) {
-                    const { value, done: readerDone } = await reader.read();
-                    done = readerDone;
-    
-                    const chunk = decoder.decode(value, { stream: !done });
-                    const lines = chunk.split('\n').filter(line => line.trim() !== '');
-    
-                    for (const line of lines) {
-                        if (line.startsWith('data: ')) {
-                            const jsonStr = line.slice(6).trim();
-                            if (jsonStr === '[DONE]') {
-                                done = true;
-                                break;
-                            }
-    
-                            try {
-                                const parsedData = JSON.parse(jsonStr);
-                                if (parsedData.choices && parsedData.choices[0].delta.content) {
-                                    let deltaContent = parsedData.choices[0].delta.content;
-    
-                                    // Continuously check if <|im_end|> is part of the growing response
-                                    botMessage += deltaContent;
-                                    if (botMessage.includes('<|im_end|>')) {
-                                        botMessage = botMessage.replace('<|im_end|>', ' '); // Replace <|im_end|> with a whitespace
-                                        botMessageElement.innerHTML = botMessage; // Update the message
-                                        abortController.abort(); // Stop fetching after replacement
-                                        return; // Exit the function after stopping the stream
-                                    }
-    
-                                    botMessageElement.innerHTML = botMessage; // Update the message as new content is received
+        }
+        return '';
+    }
+
+    // Function to restore conversation history on page load
+    function restoreConversationHistory() {
+        const savedHistory = loadConversationHistory();
+        if (savedHistory) {
+            conversationHistory = savedHistory;
+            const messages = savedHistory.split('\n');
+            for (let i = 0; i < messages.length; i += 2) {
+                const sender = messages[i];
+                const message = messages[i + 1];
+                if (sender && message) {
+                    appendMessage(sender === 'bot' ? 'Bot' : 'You', message);
+                }
+            }
+        }
+    }
+
+    // Function to clear the conversation history cookie
+    function clearConversationHistory() {
+        conversationHistory = ''; // Clear the conversation history
+        document.cookie = 'conversationHistory=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'; // Clear the cookie
+        document.getElementById('chatbot-messages').innerHTML = ''; // Clear chat messages from the display
+    }
+
+    async function sendMessage() {
+        const inputElement = document.getElementById('chatbot-input');
+        const userMessage = inputElement.value.trim();
+        if (userMessage === '') return;
+
+        appendMessage('You', userMessage);
+        conversationHistory += `user\n${userMessage}\n`; // Append user message to history
+        saveConversationHistory(); // Save conversation history in a cookie
+        inputElement.value = '';
+
+        let botMessage = '';
+        let botMessageElement = appendMessage('Bot', ''); // Create an empty message element to update as text is received
+
+        const promptTemplate = `[INST] ${systemMessage} {${userMessage}} [/INST]`;
+
+        abortController = new AbortController(); // Reinitialize AbortController for each new request
+
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    //'Authorization': `Bearer ${apiKey}`,
+                },
+                body: JSON.stringify({
+                    model: "gpt-3.5-turbo", // You can use "gpt-4" if available in your OpenAI account
+                    messages: [
+                        { role: "system", content: systemMessage },
+                        { role: "user", content: userMessage }
+                    ],
+                    stream: true
+                }),
+                signal: abortController.signal // Pass the abort signal
+            });
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let done = false;
+
+            while (!done) {
+                const { value, done: readerDone } = await reader.read();
+                done = readerDone;
+
+                const chunk = decoder.decode(value, { stream: !done });
+                const lines = chunk.split('\n').filter(line => line.trim() !== '');
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const jsonStr = line.slice(6).trim();
+                        if (jsonStr === '[DONE]') {
+                            done = true;
+                            break;
+                        }
+
+                        try {
+                            const parsedData = JSON.parse(jsonStr);
+                            if (parsedData.choices && parsedData.choices[0].delta.content) {
+                                let deltaContent = parsedData.choices[0].delta.content;
+
+                                // Continuously check if <|im_end|> is part of the growing response
+                                botMessage += deltaContent;
+                                if (botMessage.includes('<|im_end|>')) {
+                                    botMessage = botMessage.replace('<|im_end|>', ' '); // Replace <|im_end|> with a whitespace
+                                    botMessageElement.innerHTML = botMessage; // Update the message
+                                    abortController.abort(); // Stop fetching after replacement
+                                    conversationHistory += `bot\n${botMessage}\n`; // Append bot message to history
+                                    saveConversationHistory(); // Save conversation history in a cookie
+                                    return; // Exit the function after stopping the stream
                                 }
-                            } catch (e) {
-                                console.error('Could not parse JSON:', e);
+
+                                botMessageElement.innerHTML = botMessage; // Update the message as new content is received
                             }
+                        } catch (e) {
+                            console.error('Could not parse JSON:', e);
                         }
                     }
                 }
-            } catch (error) {
-                if (error.name === 'AbortError') {
-                    console.log('Fetch request was aborted.');
-                } else {
-                    console.error('Error:', error);
-                    botMessageElement.innerHTML = 'Sorry, something went wrong.';
-                }
+            }
+
+            conversationHistory += `bot\n${botMessage}\n`; // Append bot message to history
+            saveConversationHistory(); // Save conversation history in a cookie
+
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log('Fetch request was aborted.');
+            } else {
+                console.error('Error:', error);
+                botMessageElement.innerHTML = 'Sorry, something went wrong.';
             }
         }
-    
-        function appendMessage(sender, message) {
-            const messagesElement = document.getElementById('chatbot-messages');
-            const messageElement = document.createElement('div');
-            messageElement.classList.add('message');
-            messageElement.innerHTML = `<strong>${sender}:</strong> <p>${message}</p>`;
-            messagesElement.appendChild(messageElement);
-            messagesElement.scrollTop = messagesElement.scrollHeight;
-            return messageElement.querySelector('p'); // Return the paragraph element for live updates
-        }
-    
-        function terminateChat() {
-            const overlay = document.getElementById('chatbot-overlay');
-            const bubble = document.getElementById('thought-bubble');
-            overlay.classList.add('hidden');
-            bubble.style.display = 'block'; // Show thought bubble
-            abortController.abort(); // Abort any ongoing fetch requests
-            conversationHistory = ''; // Clear conversation history
-        }
-    
-        // Optional: Automatically show the chatbot when the page loads
-        window.onload = function() {
-            document.getElementById('chatbot-overlay').classList.add('hidden'); // Ensure the chat box is hidden on page load
-            document.getElementById('thought-bubble').style.display = 'block'; // Show the thought bubble
-        };
+    }
+
+    function appendMessage(sender, message) {
+        const messagesElement = document.getElementById('chatbot-messages');
+        const messageElement = document.createElement('div');
+        messageElement.classList.add('message');
+        messageElement.innerHTML = `<strong>${sender}:</strong> <p>${message}</p>`;
+        messagesElement.appendChild(messageElement);
+        messagesElement.scrollTop = messagesElement.scrollHeight;
+        return messageElement.querySelector('p'); // Return the paragraph element for live updates
+    }
+
+    function terminateChat() {
+        const overlay = document.getElementById('chatbot-overlay');
+        const bubble = document.getElementById('thought-bubble');
+        overlay.classList.add('hidden');
+        bubble.style.display = 'block'; // Show thought bubble
+        abortController.abort(); // Abort any ongoing fetch requests
+        conversationHistory = ''; // Clear conversation history
+        document.cookie = 'conversationHistory=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'; // Clear cookie
+    }
+
+    // Restore conversation history on page load
+    window.onload = function() {
+        restoreConversationHistory();
+        document.getElementById('chatbot-overlay').classList.add('hidden'); // Ensure the chat box is hidden on page load
+        document.getElementById('thought-bubble').style.display = 'block'; // Show the thought bubble
+    };
+
+    // Add button to clear conversation history
+    document.addEventListener('DOMContentLoaded', function() {
+        const clearButton = document.createElement('button');
+        clearButton.innerText = 'Clear History';
+        clearButton.style.marginTop = '10px';
+        clearButton.addEventListener('click', clearConversationHistory);
+        document.getElementById('chatbot-controls').appendChild(clearButton); // Assuming chatbot-controls is a div containing input and send button
+    });
     </script>
     
-      <style>
-          #chatbot-overlay {
-              position: fixed;
-              bottom: 0;
-              right: 0;
-              z-index: 9999;
-              width: 300px;
-              height: 400px;
-              border: 1px solid #ccc;
-              border-radius: 10px;
-              background: #fff;
-              box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-              display: none; /* Initially hidden */
-              flex-direction: column;
-              opacity: 1;
-              transition: opacity 0.3s ease, transform 0.3s ease;
-              transform: translateY(0);
-          }
-      
-          #chatbot-overlay.hidden {
-              opacity: 0; /* Hide with fade-out */
-              transform: translateY(100%); /* Move out of view */
-              display: none; /* Ensure it's not displayed */
-          }
-      
-          #chatbot-header {
-              background: #8c1c40;
-              color: #ccc;
-              padding: 10px;
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              font-size: 16px;
-          }
-      
-          #chatbot-close {
-              background: none;
-              border: none;
-              color: #ccc;
-              font-size: 20px;
-              cursor: pointer;
-          }
-      
-          #chatbot-messages {
-              flex: 1;
-              padding: 10px;
-              overflow-y: auto;
-              border-bottom: 1px solid #ccc;
-          }
-      
-          #chatbot-input {
-              border: none;
-              border-top: 1px solid #ccc;
-              padding: 10px;
-              width: calc(100% - 90px);
-              box-sizing: border-box;
-          }
-      
-          #chatbot-send {
-              border: none;
-              background: #8c1c40;
-              color: #ccc;
-              padding: 10px;
-              cursor: pointer;
-          }
-      
-          .message {
-              margin-bottom: 10px;
-              white-space: pre-wrap; /* Preserve whitespace and line breaks */
-          }
-      
-          #thought-bubble {
-              position: fixed;
-              bottom: 20px;
-              right: 20px;
-              z-index: 9999;
-              width: 50px;
-              height: 50px;
-              background: url('./phreakygpt.png') no-repeat center center;
-              background-size: contain;
-              cursor: pointer;
-              display: block; /* Visible by default */
-              transition: opacity 0.3s ease;
-          }
-      </style>
-      
         
         <div jscontroller="pc62j" jsmodel="iTeaXe" jsaction="rcuQ6b:WYd;GvneHb:og1FDd;vbaUQc:uAM5ec;"><div jscontroller="X4BaPc" jsaction="rcuQ6b:WYd;o6xM5b:Pg9eo;HuL2Hd:mHeCvf;VMhF5:FFYy5e;sk3Qmb:HI1Mdd;JIbuQc:rSzFEd(z2EeY),aSaF6e(ilzYPe);"><div jsname="tiN4bf"><style nonce="A89IbWgArdvyIVeePhV6Dg">.rrJNTc{opacity: 0;}.bKy5e{pointer-events: none; position: absolute; top: 0;}</style><div class="bKy5e"><div class="rrJNTc" tabindex="-1"><div class="VfPpkd-dgl2Hf-ppHlrf-sM5MNb" data-is-touch-wrapper='true'><button class="VfPpkd-LgbsSe VfPpkd-LgbsSe-OWXEXe-dgl2Hf LjDxcd XhPA0b LQeN7 WsSUlf jz7fPb" jscontroller="soHxf" jsaction="click:cOuCgd; mousedown:UX7yZ; mouseup:lbsD7e; mouseenter:tfO1Yc; mouseleave:JywGue; touchstart:p6p2H; touchmove:FwuNnf; touchend:yfqBxc; touchcancel:JMtRjd; focus:AHmuwe; blur:O22p3e; contextmenu:mg9Pef;mlnRJb:fLiPzd;" data-idom-class="LjDxcd XhPA0b LQeN7 WsSUlf jz7fPb" jsname="z2EeY" tabindex="0"><div class="VfPpkd-Jh9lGc"></div><div class="VfPpkd-J1Ukfc-LhBDec"></div><div class="VfPpkd-RLmnJb"></div><span jsname="V67aGc" class="VfPpkd-vQzf8d">Skip to main content</span></button></div><div class="VfPpkd-dgl2Hf-ppHlrf-sM5MNb" data-is-touch-wrapper='true'><button class="VfPpkd-LgbsSe VfPpkd-LgbsSe-OWXEXe-dgl2Hf LjDxcd XhPA0b LQeN7 WsSUlf br90J" jscontroller="soHxf" jsaction="click:cOuCgd; mousedown:UX7yZ; mouseup:lbsD7e; mouseenter:tfO1Yc; mouseleave:JywGue; touchstart:p6p2H; touchmove:FwuNnf; touchend:yfqBxc; touchcancel:JMtRjd; focus:AHmuwe; blur:O22p3e; contextmenu:mg9Pef;mlnRJb:fLiPzd;" data-idom-class="LjDxcd XhPA0b LQeN7 WsSUlf br90J" jsname="ilzYPe" tabindex="0"><div class="VfPpkd-Jh9lGc"></div><div class="VfPpkd-J1Ukfc-LhBDec"></div><div class="VfPpkd-RLmnJb"></div><span jsname="V67aGc" class="VfPpkd-vQzf8d">Skip to navigation</span></button></div></div></div><div class="M63kCb N63NQ"></div><div class="QZ3zWd"><div class="fktJzd AKpWA fOU46b yMcSQd Ly6Unf G9Qloe XeSM4 XxIgdb" jsname="UzWXSb" data-uses-custom-theme="true" data-legacy-theme-name="Testable" data-legacy-theme-font-kit="null" data-legacy-theme-color-kit="null" jscontroller="Md9ENb" jsaction="gsiSmd:Ffcznf;yj5fUd:cpPetb;HNXL3:q0Vyke;e2SXKd:IPDu5e;BdXpgd:nhk7K;rcuQ6b:WYd;"><header id="atIdViewHeader"><div class="BbxBP HP6J1d K5Zlne" jsname="WA9qLc" jscontroller="RQOkef" jsaction="rcuQ6b:JdcaS;MxH79b:JdcaS;VbOlFf:ywL4Jf;FaOgy:ywL4Jf; keydown:Hq2uPe; wheel:Ut4Ahc;" data-top-navigation="true" data-is-preview="false"><div class="DXsoRd YTv4We oNsfjf" role="button" tabindex="0" jsaction="click:LUvzV" jsname="z4Tpl" id="s9iPrd" aria-haspopup="true" aria-controls="yuynLe" aria-expanded="false"><svg class="wFCWne" viewBox="0 0 24 24" stroke="currentColor" jsname="B1n9ub" focusable="false"><g transform="translate(12,12)"><path class="hlJH0" d="M-9 -5 L9 -5" fill="none" stroke-width="2"/><path class="HBu6N" d="M-9 0 L9 0" fill="none" stroke-width="2"/><path class="cLAGQe" d="M-9 5 L9 5" fill="none" stroke-width="2"/></g></svg></div><nav class="JzO0Vc" jsname="ihoMLd" role="navigation" tabindex="-1" id="yuynLe" jsaction="transitionend:UD2r5"><a class='XMyrgf' href='/'><img src="6226ede8b2af3214f7e9f9a7269c34a8.jpg" class="r9CsCb" role="img" aria-label="Site home"></a><a class='Zjiec oNsfjf' href='/'><span>Topper Robotics</span></a><ul class="jYxBte Fpy8Db" tabindex="-1"><li jsname="ibnC6b" data-nav-level="1"><div class="PsKE7e r8s4j-R6PoUb IKA38e baH5ib oNsfjf lhZOrc" aria-current="true"><div class="I35ICb" jsaction="keydown:mPuKz(QwLHlb); click:vHQTA(QwLHlb);"><a aria-selected='true' class='aJHbb dk90Ob hDrhEe HlqNPb' data-level='1' data-navtype='1' data-page='1QxixeMHYjieqD5z3-FHQKWMdTWWsAUgW' data-type='1' data-url='index.html' href='Home.html' jsname='QwLHlb' role='link' tabindex='0'>Home</a></div></div></li><li jsname="ibnC6b" data-nav-level="1"><div class="PsKE7e r8s4j-R6PoUb IKA38e baH5ib oNsfjf"><div class="I35ICb" jsaction="keydown:mPuKz(QwLHlb); click:vHQTA(QwLHlb);"><a class='aJHbb dk90Ob hDrhEe HlqNPb' data-level='1' data-navtype='1' data-page='19C0NI9OrAq2J-VnmHX1XJ_eH6zM9azQJ' data-type='1' data-url='Sponsors.html' href='/sponsors' jsname='QwLHlb' role='link' tabindex='-1'>Sponsors</a></div></div></li><li jsname="ibnC6b" data-nav-level="1"><div class="PsKE7e r8s4j-R6PoUb IKA38e baH5ib oNsfjf"><div class="I35ICb" jsaction="keydown:mPuKz(QwLHlb); click:vHQTA(QwLHlb);"><a class="aJHbb dk90Ob hDrhEe HlqNPb" jsname="QwLHlb" role="link" tabindex="-1" data-navtype="1" href="About%20Us_.html" data-url="About%20Us_.html" data-type="1" data-level="1" data-page="19DgIMuXShPTWAIkTZSe5FNhVJJcf7t2T">About Us </a></div></div></li><li jsname="ibnC6b" data-nav-level="1"><div class="PsKE7e r8s4j-R6PoUb IKA38e baH5ib oNsfjf"><div class="I35ICb" jsaction="keydown:mPuKz(QwLHlb); click:vHQTA(QwLHlb);"><a class='aJHbb dk90Ob hDrhEe HlqNPb' data-level='1' data-navtype='1' data-page='1i1D4quYKsQMJdKkcVBi8GxeV4swy7dYN' data-type='1' data-url='Events.html' href='/events' jsname='QwLHlb' role='link' tabindex='-1'>Events</a></div></div></li><li jsname="ibnC6b" data-nav-level="1"><div class="PsKE7e r8s4j-R6PoUb IKA38e baH5ib oNsfjf"><div class="I35ICb" jsaction="keydown:mPuKz(QwLHlb); click:vHQTA(QwLHlb);"><a class="aJHbb dk90Ob hDrhEe HlqNPb" jsname="QwLHlb" role="link" tabindex="-1" data-navtype="1" href="Our%20Robot.html" data-url="Our%20Robot.html" data-type="1" data-level="1" data-page="12folRM7k6bNl9GnR-bRbd_qevTvVbaEJ">Our Robot</a></div></div></li></ul></nav><div class="VLoccc K5Zlne U8eYrb" jsname="rtFGi"><div class="Pvc6xe"><div jsname="I8J07e" class="TlfmSc YSH9J"><a class='GAuSPc' href='/' jsname='jIujaf'><img src="6226ede8b2af3214f7e9f9a7269c34a8.jpg" class="lzy1Td" role="img" aria-label="Site home" jsname="SwcDWb"><span class="QTKDff p46B7e">Topper Robotics</span></a></div><nav class="plFg0c" jscontroller="HXO1uc" jsaction="rcuQ6b:rcuQ6b;MxH79b:CfS0pe;" id="WDxLfe" data-is-preview="false" style="visibility: hidden;" role="navigation" tabindex="-1"><ul jsname="waIgnc" class="K1Ci7d oXBWEc jYxBte"><li jsname="ibnC6b" data-nav-level="1" class="VsJjtf"><div class="PsKE7e qV4dIc Qrrb5 YSH9J M9vuGd" aria-current="true"><div class="I35ICb" jsaction="click:vHQTA(QwLHlb); keydown:mPuKz(QwLHlb);"><a aria-selected='true' class='aJHbb dk90Ob jgXgSe HlqNPb' data-level='1' data-navtype='1' data-page='1QxixeMHYjieqD5z3-FHQKWMdTWWsAUgW' data-type='1' data-url='Home.html' href='Home.html' jsaction='rcuQ6b:WYd;' jscontroller='yUHiM' jsname='QwLHlb' role='link' tabindex='0'>Home</a></div></div><div class="rgLkl"></div></li><li jsname="ibnC6b" data-nav-level="1" class="VsJjtf"><div class="PsKE7e qV4dIc Qrrb5 YSH9J"><div class="I35ICb" jsaction="click:vHQTA(QwLHlb); keydown:mPuKz(QwLHlb);"><a class='aJHbb dk90Ob jgXgSe HlqNPb' data-level='1' data-navtype='1' data-page='19C0NI9OrAq2J-VnmHX1XJ_eH6zM9azQJ' data-type='1' data-url='Sponsors.html' href='/sponsors' jsaction='rcuQ6b:WYd;' jscontroller='yUHiM' jsname='QwLHlb' role='link' tabindex='-1'>Sponsors</a></div></div><div class="rgLkl"></div></li><li jsname="ibnC6b" data-nav-level="1" class="VsJjtf"><div class="PsKE7e qV4dIc Qrrb5 YSH9J"><div class="I35ICb" jsaction="click:vHQTA(QwLHlb); keydown:mPuKz(QwLHlb);"><a class="aJHbb dk90Ob jgXgSe HlqNPb" jscontroller="yUHiM" jsaction="rcuQ6b:WYd;" jsname="QwLHlb" role="link" tabindex="-1" data-navtype="1" href="About%20Us_.html" data-url="About%20Us_.html" data-type="1" data-level="1" data-page="19DgIMuXShPTWAIkTZSe5FNhVJJcf7t2T">About Us </a></div></div><div class="rgLkl"></div></li><li jsname="ibnC6b" data-nav-level="1" class="VsJjtf"><div class="PsKE7e qV4dIc Qrrb5 YSH9J"><div class="I35ICb" jsaction="click:vHQTA(QwLHlb); keydown:mPuKz(QwLHlb);"><a class='aJHbb dk90Ob jgXgSe HlqNPb' data-level='1' data-navtype='1' data-page='1i1D4quYKsQMJdKkcVBi8GxeV4swy7dYN' data-type='1' data-url='Events.html' href='/events' jsaction='rcuQ6b:WYd;' jscontroller='yUHiM' jsname='QwLHlb' role='link' tabindex='-1'>Events</a></div></div><div class="rgLkl"></div></li><li jsname="ibnC6b" data-nav-level="1" class="VsJjtf"><div class="PsKE7e qV4dIc Qrrb5 YSH9J"><div class="I35ICb" jsaction="click:vHQTA(QwLHlb); keydown:mPuKz(QwLHlb);"><a class="aJHbb dk90Ob jgXgSe HlqNPb" jscontroller="yUHiM" jsaction="rcuQ6b:WYd;" jsname="QwLHlb" role="link" tabindex="-1" data-navtype="1" href="Our%20Robot.html" data-url="Our%20Robot.html" data-type="1" data-level="1" data-page="12folRM7k6bNl9GnR-bRbd_qevTvVbaEJ">Our Robot</a></div></div><div class="rgLkl"></div></li><li jsname="ibnC6b" data-nav-level="1" class="VsJjtf ZmrVpf oXBWEc" more-menu-item jsaction="mouseenter:Vx8Jlb; mouseleave:ysDRUd"><div class="PsKE7e qV4dIc Qrrb5 YSH9J"><div class="I35ICb" jsaction="click:vHQTA(QwLHlb); keydown:mPuKz(QwLHlb);"><a class="aJHbb dk90Ob jgXgSe HlqNPb" jscontroller="yUHiM" jsaction="rcuQ6b:WYd;" jsname="QwLHlb" role="link" tabindex="-1" data-navtype="1" aria-expanded="false" aria-haspopup="true" data-level="1" data-page="">More</a><div class="mBHtvb u5fiyc" role="presentation" title="Expand/Collapse" jsaction="click:oESVTe" jsname="ix0Hvc"><svg class="dvmRw" viewBox="0 0 24 24" stroke="currentColor" jsname="HIH2V" focusable="false"><g transform="translate(9.7,12) rotate(45)"><path class="K4B8Y" d="M-4.2 0 L4.2 0" stroke-width="2"/></g><g transform="translate(14.3,12) rotate(-45)"><path class="MrYMx" d="M-4.2 0 L4.2 0" stroke-width="2"/></g></svg></div></div></div><div class="oGuwee eWDljc RPRy1e Mkt3Tc" style="display:none;" jsname="QXE97" jsaction="transitionend:SJBdh" role="group"><ul class="VcS63b"><li jsname="ibnC6b" data-nav-level="2" class="ijMPi ZmrVpf" in-more-item><div class="PsKE7e IKA38e oNsfjf lhZOrc" aria-current="true"><div class="I35ICb" jsaction="click:vHQTA(QwLHlb); keydown:mPuKz(QwLHlb);"><a aria-selected='true' class='aJHbb hDrhEe HlqNPb' data-in-more-submenu='true' data-level='2' data-navtype='1' data-page='1QxixeMHYjieqD5z3-FHQKWMdTWWsAUgW' data-type='1' data-url='index.html' href='/' jsaction='rcuQ6b:WYd;' jscontroller='yUHiM' jsname='QwLHlb' role='link' tabindex='-1'>Home</a></div></div></li><li jsname="ibnC6b" data-nav-level="2" class="ijMPi ZmrVpf" in-more-item><div class="PsKE7e IKA38e oNsfjf"><div class="I35ICb" jsaction="click:vHQTA(QwLHlb); keydown:mPuKz(QwLHlb);"><a class='aJHbb hDrhEe HlqNPb' data-in-more-submenu='true' data-level='2' data-navtype='1' data-page='19C0NI9OrAq2J-VnmHX1XJ_eH6zM9azQJ' data-type='1' data-url='Sponsors.html' href='/sponsors' jsaction='rcuQ6b:WYd;' jscontroller='yUHiM' jsname='QwLHlb' role='link' tabindex='-1'>Sponsors</a></div></div></li><li jsname="ibnC6b" data-nav-level="2" class="ijMPi ZmrVpf" in-more-item><div class="PsKE7e IKA38e oNsfjf"><div class="I35ICb" jsaction="click:vHQTA(QwLHlb); keydown:mPuKz(QwLHlb);"><a class="aJHbb hDrhEe HlqNPb" jscontroller="yUHiM" jsaction="rcuQ6b:WYd;" jsname="QwLHlb" role="link" tabindex="-1" data-navtype="1" href="About%20Us_.html" data-url="About%20Us_.html" data-type="1" data-in-more-submenu="true" data-level="2" data-page="19DgIMuXShPTWAIkTZSe5FNhVJJcf7t2T">About Us </a></div></div></li><li jsname="ibnC6b" data-nav-level="2" class="ijMPi ZmrVpf" in-more-item><div class="PsKE7e IKA38e oNsfjf"><div class="I35ICb" jsaction="click:vHQTA(QwLHlb); keydown:mPuKz(QwLHlb);"><a class='aJHbb hDrhEe HlqNPb' data-in-more-submenu='true' data-level='2' data-navtype='1' data-page='1i1D4quYKsQMJdKkcVBi8GxeV4swy7dYN' data-type='1' data-url='Events.html' href='/events' jsaction='rcuQ6b:WYd;' jscontroller='yUHiM' jsname='QwLHlb' role='link' tabindex='-1'>Events</a></div></div></li><li jsname="ibnC6b" data-nav-level="2" class="ijMPi ZmrVpf" in-more-item><div class="PsKE7e IKA38e oNsfjf"><div class="I35ICb" jsaction="click:vHQTA(QwLHlb); keydown:mPuKz(QwLHlb);"><a class="aJHbb hDrhEe HlqNPb" jscontroller="yUHiM" jsaction="rcuQ6b:WYd;" jsname="QwLHlb" role="link" tabindex="-1" data-navtype="1" href="Our%20Robot.html" data-url="Our%20Robot.html" data-type="1" data-in-more-submenu="true" data-level="2" data-page="12folRM7k6bNl9GnR-bRbd_qevTvVbaEJ">Our Robot</a></div></div></li></ul></div></li></ul></nav></div><div jsname="mADGA" class="zDUgLc"></div></div><div class="TxnWlb" jsname="BDdyze" jsaction="click:LUvzV"></div></div></header><div role="main" tabindex="-1" class="UtePc RCETm" dir="ltr"><section id="h.INITIAL_GRID.e0oc2t5v3az9" class="yaqOZd LB7kq cJgDec nyKByd O13XJf" style=""><div class="Nu95r"><div class="IFuOkc" style="background-position: center center; background-image: url(Home/6a771b09e3d75a84b3ff8b378c1ff0ac.jpg); background-size: cover;" jsname="LQX2Vd"></div></div><div class="mYVXT"><div class="LS81yb VICjCf j5pSsc db35Fc" tabindex="-1"><div class="hJDwNd-AhqUyc-uQSCkd Ft7HRd-AhqUyc-uQSCkd purZT-AhqUyc-II5mzb ZcASvf-AhqUyc-II5mzb pSzOP-AhqUyc-qWD73c Ktthjf-AhqUyc-qWD73c JNdkSc SQVYQc"><div class="JNdkSc-SmKAyb LkDMRd"><div class="" jscontroller="sGwD4d" jsaction="zXBUYb:zTPCnb;zQF9Uc:Qxe3nd;" jsname="F57UId"><div class="oKdM2c ZZyype Kzv0Me"><div id="h.205ac64e7bc1b564_38" class="hJDwNd-AhqUyc-uQSCkd Ft7HRd-AhqUyc-uQSCkd jXK9ad D2fZ2 zu5uec OjCsFc dmUFtb wHaque g5GTcb"><div class="jXK9ad-SmKAyb"><div class="tyJCtd mGzaTb Depvyb baZpAe"><p  dir="ltr" class="zfr3Q CDt4Ke " style="text-align: center;"><span class="FdCeP C9DxTc " style="font-family: Anton, Arial; font-weight: 400; vertical-align: baseline;">TOPPER ROBOTICS</span></p><p  dir="ltr" class="zfr3Q CDt4Ke " style="text-align: center;"><span class="jgG6ef C9DxTc " style="font-family: Anton, Arial; font-weight: 400; vertical-align: baseline;">SCIENCE HILL HIGH SCHOOL - JOHNSON CITY, TN</span></p></div></div></div></div></div></div></div></div></div></section><section id="h.3aeec6128f0cca83_3" class="yaqOZd qeLZfd"><div class="IFuOkc"></div><div class="mYVXT"><div class="LS81yb VICjCf j5pSsc db35Fc" tabindex="-1"><div class="hJDwNd-AhqUyc-qWD73c Ft7HRd-AhqUyc-qWD73c purZT-AhqUyc-II5mzb ZcASvf-AhqUyc-II5mzb pSzOP-AhqUyc-qWD73c Ktthjf-AhqUyc-qWD73c JNdkSc SQVYQc yYI8W HQwdzb"><div class="JNdkSc-SmKAyb LkDMRd"><div class="" jscontroller="sGwD4d" jsaction="zXBUYb:zTPCnb;zQF9Uc:Qxe3nd;" jsname="F57UId"><div class="oKdM2c ZZyype Kzv0Me"><div id="h.574473e396fdba2b_106" class="hJDwNd-AhqUyc-qWD73c Ft7HRd-AhqUyc-qWD73c jXK9ad D2fZ2 zu5uec OjCsFc dmUFtb"><div class="jXK9ad-SmKAyb"><div class="tyJCtd baZpAe"><div class="t3iYD"><img src="Home/afd55776685c6908f1eea737e8d00ee8.jpg" class="CENy8b" role="img" style="width: 162.1044795105%; margin: 0% 0 0% -31.0522397553%"></div></div></div></div></div><div class="oKdM2c ZZyype"><div id="h.79d9f08290b1d515_26" class="hJDwNd-AhqUyc-qWD73c Ft7HRd-AhqUyc-qWD73c jXK9ad D2fZ2 zu5uec wHaque g5GTcb"><div class="jXK9ad-SmKAyb"><div class="tyJCtd mGzaTb Depvyb baZpAe"><p  dir="ltr" class="zfr3Q CDt4Ke " style=""><span class="C9DxTc " style="font-size: 10.0pt; vertical-align: baseline;">Topper Robotics supporting our drive team from the stands during a match at the Smokey Regional in Knoxville TN, 2023!</span></p></div></div></div></div></div></div></div><div class="hJDwNd-AhqUyc-qWD73c Ft7HRd-AhqUyc-qWD73c purZT-AhqUyc-II5mzb ZcASvf-AhqUyc-II5mzb pSzOP-AhqUyc-qWD73c Ktthjf-AhqUyc-qWD73c JNdkSc SQVYQc yYI8W HQwdzb"><div class="JNdkSc-SmKAyb LkDMRd"><div class="" jscontroller="sGwD4d" jsaction="zXBUYb:zTPCnb;zQF9Uc:Qxe3nd;" jsname="F57UId"><div class="oKdM2c ZZyype Kzv0Me"><div id="h.2e846e48369c6fa5_0" class="hJDwNd-AhqUyc-qWD73c Ft7HRd-AhqUyc-qWD73c jXK9ad D2fZ2 zu5uec OjCsFc dmUFtb"><div class="jXK9ad-SmKAyb"><div class="tyJCtd mGzaTb Depvyb baZpAe"><div id="h.8gvmu8x9j0xs" class="CobnVe yMxPgf  aP9Z7e"></div><h2 id="h.8gvmu8x9j0xs_l" dir="ltr" class="zfr3Q JYVBee CDt4Ke " style="text-align: center;"><span class="puwcIf C9DxTc " style="font-family: Roboto, Arial; font-weight: 900; vertical-align: baseline;">Who are we?</span></h2></div></div></div></div><div class="oKdM2c ZZyype"><div id="h.3aeec6128f0cca83_0" class="hJDwNd-AhqUyc-qWD73c Ft7HRd-AhqUyc-qWD73c jXK9ad D2fZ2 zu5uec wHaque g5GTcb"><div class="jXK9ad-SmKAyb"><div class="tyJCtd mGzaTb Depvyb baZpAe"><p  dir="ltr" class="zfr3Q CDt4Ke " style="line-height: 1.7999999999999998; text-align: center;"><span class="C9DxTc " style="font-family: Bitter, Arial; font-size: 13.999999999999998pt; font-weight: 700; vertical-align: baseline;">The Science Hill High School Robotics Team is a club that builds robots to compete in competitions, inspire younger generations, and provide hands-on STEM experience. </span></p><p  dir="ltr" class="zfr3Q CDt4Ke " style="line-height: 1.7999999999999998; text-align: center;"><span class="C9DxTc " style="font-family: Bitter, Arial; font-size: 13.999999999999998pt; font-weight: 700; vertical-align: baseline;">  Our club consists of various sub-teams that all work together to create one complex robot during the FIRST season, or multiple smaller, unique robots during the VEX season, forging bonds that last even outside the classroom!</span></p><p  dir="ltr" class="zfr3Q CDt4Ke " style="line-height: 1.7999999999999998; text-align: center;"><span class="C9DxTc " style="font-family: Bitter, Arial; font-size: 13.999999999999998pt; font-weight: 700; vertical-align: baseline;"> Learn more about our teams and which one you might be interested in on the &quot;About Us&quot; tab. </span></p></div></div></div></div></div></div></div></div></div></section><section id="h.1301a3267253f72f_8" class="yaqOZd WxWicb qeLZfd"><div class="IFuOkc"></div><div class="mYVXT"><div class="LS81yb VICjCf j5pSsc db35Fc" tabindex="-1"><div class="hJDwNd-AhqUyc-uQSCkd Ft7HRd-AhqUyc-uQSCkd purZT-AhqUyc-II5mzb ZcASvf-AhqUyc-II5mzb pSzOP-AhqUyc-qWD73c Ktthjf-AhqUyc-qWD73c JNdkSc SQVYQc"><div class="JNdkSc-SmKAyb LkDMRd"><div class="" jscontroller="sGwD4d" jsaction="zXBUYb:zTPCnb;zQF9Uc:Qxe3nd;" jsname="F57UId"><div class="oKdM2c ZZyype Kzv0Me"><div id="h.1301a3267253f72f_11" class="hJDwNd-AhqUyc-uQSCkd Ft7HRd-AhqUyc-uQSCkd jXK9ad D2fZ2 zu5uec OjCsFc dmUFtb wHaque g5GTcb"><div class="jXK9ad-SmKAyb"><div class="tyJCtd baZpAe"><div class="iwQgFb" role="presentation"></div></div></div></div></div></div></div></div></div></div></section><section id="h.f755f2ccb718455_4" class="yaqOZd qeLZfd"><div class="IFuOkc"></div><div class="mYVXT"><div class="LS81yb VICjCf j5pSsc db35Fc" tabindex="-1"><div class="hJDwNd-AhqUyc-qWD73c Ft7HRd-AhqUyc-qWD73c purZT-AhqUyc-II5mzb ZcASvf-AhqUyc-II5mzb pSzOP-AhqUyc-qWD73c Ktthjf-AhqUyc-qWD73c JNdkSc SQVYQc yYI8W HQwdzb"><div class="JNdkSc-SmKAyb LkDMRd"><div class="" jscontroller="sGwD4d" jsaction="zXBUYb:zTPCnb;zQF9Uc:Qxe3nd;" jsname="F57UId"><div class="oKdM2c ZZyype Kzv0Me"><div id="h.3fde8c6ba68dd3d2_7" class="hJDwNd-AhqUyc-qWD73c Ft7HRd-AhqUyc-qWD73c jXK9ad D2fZ2 zu5uec OjCsFc dmUFtb"><div class="jXK9ad-SmKAyb"><div class="tyJCtd mGzaTb Depvyb baZpAe"><div id="h.7id6m55fvut9" class="CobnVe yMxPgf  aP9Z7e"></div><h2 id="h.7id6m55fvut9_l" dir="ltr" class="zfr3Q JYVBee CDt4Ke " style="text-align: center;"><span class="puwcIf C9DxTc " style="font-family: Roboto, Arial; font-weight: 900; vertical-align: baseline;">What we&#39;re doing</span></h2></div></div></div></div><div class="oKdM2c ZZyype"><div id="h.3fde8c6ba68dd3d2_9" class="hJDwNd-AhqUyc-qWD73c Ft7HRd-AhqUyc-qWD73c jXK9ad D2fZ2 zu5uec wHaque g5GTcb"><div class="jXK9ad-SmKAyb"><div class="tyJCtd mGzaTb Depvyb baZpAe"><p  dir="ltr" class="zfr3Q CDt4Ke " style="line-height: 1.7999999999999998; text-align: center;"><span class="gBYvFf C9DxTc " style="font-family: Bitter, Arial; font-weight: 700; vertical-align: baseline;">At the moment, we are working on revamping our robot for our second competition in the 2024 season of FRC! To learn more about dates and times, check out the events tab.</span></p></div></div></div></div></div></div></div><div class="hJDwNd-AhqUyc-qWD73c Ft7HRd-AhqUyc-qWD73c purZT-AhqUyc-II5mzb ZcASvf-AhqUyc-II5mzb pSzOP-AhqUyc-qWD73c Ktthjf-AhqUyc-qWD73c JNdkSc SQVYQc"><div class="JNdkSc-SmKAyb LkDMRd"><div class="" jscontroller="sGwD4d" jsaction="zXBUYb:zTPCnb;zQF9Uc:Qxe3nd;" jsname="F57UId"><div class="oKdM2c ZZyype Kzv0Me"><div id="h.1301a3267253f72f_0" class="hJDwNd-AhqUyc-qWD73c Ft7HRd-AhqUyc-qWD73c jXK9ad D2fZ2 zu5uec OjCsFc dmUFtb wHaque g5GTcb"><div class="jXK9ad-SmKAyb"><div class="tyJCtd baZpAe"><div jscontroller="rVn3Q" jsaction="rcuQ6b:rcuQ6b; keydown:bNMLAd; click:KjsqPd;MxH79b:Fvx5s; touchstart:UrsOsc; touchend:V7HmAd; focus:G83JOb; blur:gX3lbf;AHmuwe:G83JOb;O22p3e:gX3lbf;" class="mr3rhf" style="aspect-ratio: 1.3311036789297659 / 1;" tabindex="0" data-autostart="false" data-showdots="true" data-showcaptions="true" data-transitionspeed="1800" aria-label="Image carousel"><div jsname="kEMzy" class="Ah1ayc" aria-live="polite"><div style="background-image: url(Home/ff95d874dd6f9ba10ad52ed631e533b2.jpg);z-index: 1;" class="nQBJnb" role="img" jsname="hcY42b" aria-label="Carousel image"></div><div style="background-image: url(Home/fe8a9d6ccad2e0a3dda3f7f77b8b8ab8.jpg);" class="nQBJnb" role="img" jsname="hcY42b" aria-label="Carousel image"></div><div style="background-image: url(Home/dafba8888def1a9b66484e17bb65f733.jpg);" class="nQBJnb" role="img" jsname="hcY42b" aria-label="Carousel image"></div><div style="background-image: url(Home/5c8f5887b1a96ea4f9a19fbb64c3a3a5.jpg);" class="nQBJnb" role="img" jsname="hcY42b" aria-label="Carousel image"></div><div style="background-image: url(Home/f0ee165a0ce4bc329b8d378a120f01db.jpg);" class="nQBJnb" role="img" jsname="hcY42b" aria-label="Carousel image"></div><div jsaction="JIbuQc:LLzMhd;"><div role="button" class="uArJ5e Y5FYJe VsxsTb B43yq Eoo44b" jscontroller="VXdfxd" jsaction="click:cOuCgd; mousedown:UX7yZ; mouseup:lbsD7e; mouseenter:tfO1Yc; mouseleave:JywGue;touchstart:p6p2H; touchmove:FwuNnf; touchend:yfqBxc(preventDefault=true); touchcancel:JMtRjd;focus:AHmuwe; blur:O22p3e; contextmenu:mg9Pef;" jsshadow jsname="VfNHU" aria-label="Previous" tabindex="0" data-tooltip="Previous" data-tooltip-vertical-offset="-12" data-tooltip-horizontal-offset="0"><div class="PDXc1b MbhUzd" jsname="ksKsZd"></div><span jsslot class="XuQwKc"><span class="GmuOkf"><svg width="36px" height="36px" viewBox="0 0 48 48" fill="currentColor"><path d="M30.83 32.67l-9.17-9.17 9.17-9.17L28 11.5l-12 12 12 12z"/><path d="M0-.5h48v48H0z" fill="none"/></svg></span></span></div></div><div jsaction="JIbuQc:KmWemb;"><div role="button" class="uArJ5e Y5FYJe VsxsTb eb4Tkf Eoo44b" jscontroller="VXdfxd" jsaction="click:cOuCgd; mousedown:UX7yZ; mouseup:lbsD7e; mouseenter:tfO1Yc; mouseleave:JywGue;touchstart:p6p2H; touchmove:FwuNnf; touchend:yfqBxc(preventDefault=true); touchcancel:JMtRjd;focus:AHmuwe; blur:O22p3e; contextmenu:mg9Pef;" jsshadow jsname="OCpkoe" aria-label="Next" tabindex="0" data-tooltip="Next" data-tooltip-vertical-offset="-12" data-tooltip-horizontal-offset="0"><div class="PDXc1b MbhUzd" jsname="ksKsZd"></div><span jsslot class="XuQwKc"><span class="GmuOkf"><svg width="36px" height="36px" viewBox="0 0 48 48" fill="currentColor"><path d="M17.17 32.92l9.17-9.17-9.17-9.17L20 11.75l12 12-12 12z"/><path d="M0-.25h48v48H0z" fill="none"/></svg></span></span></div></div></div><div jsaction="mouseover:X2Lqef; mouseout:UjLgF;"><div class="dVFkob yQHJof" jsname="fQjHAd" style="display: none;"><span class="Ecdcnc TMjjoe qnVSj" jsname="vM03ic"></span></div><div class="dVFkob yQHJof" jsname="fQjHAd" style="display: none;"><span class="Ecdcnc TMjjoe qnVSj" jsname="vM03ic"></span></div><div class="dVFkob yQHJof" jsname="fQjHAd" style="display: none;"><span class="Ecdcnc TMjjoe qnVSj" jsname="vM03ic"></span></div><div class="dVFkob yQHJof" jsname="fQjHAd" style="display: none;"><span class="Ecdcnc TMjjoe qnVSj" jsname="vM03ic"></span></div><div class="dVFkob yQHJof" jsname="fQjHAd" style="display: none;"><span class="Ecdcnc TMjjoe qnVSj" jsname="vM03ic"></span></div></div><div class="cc0d9d" jsname="Hj7utc"><span class="ZbQFKd CbiMKe" jsname="VeXVo"></span><span class="ZbQFKd" jsname="VeXVo"></span><span class="ZbQFKd" jsname="VeXVo"></span><span class="ZbQFKd" jsname="VeXVo"></span><span class="ZbQFKd" jsname="VeXVo"></span></div></div></div></div></div></div></div></div></div></div></div></section><section id="h.1301a3267253f72f_4" class="yaqOZd WxWicb qeLZfd"><div class="IFuOkc"></div><div class="mYVXT"><div class="LS81yb VICjCf j5pSsc db35Fc" tabindex="-1"><div class="hJDwNd-AhqUyc-uQSCkd Ft7HRd-AhqUyc-uQSCkd purZT-AhqUyc-II5mzb ZcASvf-AhqUyc-II5mzb pSzOP-AhqUyc-qWD73c Ktthjf-AhqUyc-qWD73c JNdkSc SQVYQc"><div class="JNdkSc-SmKAyb LkDMRd"><div class="" jscontroller="sGwD4d" jsaction="zXBUYb:zTPCnb;zQF9Uc:Qxe3nd;" jsname="F57UId"><div class="oKdM2c ZZyype Kzv0Me"><div id="h.1301a3267253f72f_7" class="hJDwNd-AhqUyc-uQSCkd Ft7HRd-AhqUyc-uQSCkd jXK9ad D2fZ2 zu5uec OjCsFc dmUFtb wHaque g5GTcb"><div class="jXK9ad-SmKAyb"><div class="tyJCtd baZpAe"><div class="iwQgFb" role="presentation"></div></div></div></div></div></div></div></div></div></div></section><section id="h.f755f2ccb718455_3" class="yaqOZd cJgDec nyKByd" style=""><div class="IFuOkc" style="background-position: center center; background-image: url(Home/2d34ece274153e7c1fcb0320377a98ec.jpg); background-size: cover;"></div><div class="mYVXT"><div class="LS81yb VICjCf j5pSsc db35Fc" tabindex="-1"><div class="hJDwNd-AhqUyc-wNfPc Ft7HRd-AhqUyc-wNfPc purZT-AhqUyc-II5mzb ZcASvf-AhqUyc-II5mzb pSzOP-AhqUyc-wNfPc Ktthjf-AhqUyc-wNfPc JNdkSc SQVYQc yYI8W HQwdzb"><div class="JNdkSc-SmKAyb LkDMRd"><div class="" jscontroller="sGwD4d" jsaction="zXBUYb:zTPCnb;zQF9Uc:Qxe3nd;" jsname="F57UId"><div class="oKdM2c ZZyype Kzv0Me"><div id="h.2789f7bc7615780_117" class="hJDwNd-AhqUyc-wNfPc Ft7HRd-AhqUyc-wNfPc pSzOP-AhqUyc-wNfPc Ktthjf-AhqUyc-wNfPc jXK9ad D2fZ2 zu5uec OjCsFc dmUFtb"><div class="jXK9ad-SmKAyb"><div class="tyJCtd mGzaTb Depvyb baZpAe"><div id="h.raoz3aug2wra" class="CobnVe yMxPgf  aP9Z7e"></div><h2 id="h.raoz3aug2wra_l" dir="ltr" class="zfr3Q JYVBee CDt4Ke " style=""><span class="C9DxTc " style="font-family: Roboto, Arial; font-weight: 900;">Check out our Instagram for more information and meeting times! </span></h2></div></div></div></div><div class="oKdM2c ZZyype"><div id="h.2789f7bc7615780_119" class="hJDwNd-AhqUyc-wNfPc Ft7HRd-AhqUyc-wNfPc pSzOP-AhqUyc-wNfPc Ktthjf-AhqUyc-wNfPc jXK9ad D2fZ2 zu5uec wHaque g5GTcb"><div class="jXK9ad-SmKAyb"><div class="tyJCtd mGzaTb Depvyb baZpAe"><p  dir="ltr" class="zfr3Q CDt4Ke " style=""><span class="C9DxTc " style="font-family: Bitter, Arial; font-size: 13.999999999999998pt; font-weight: 700; vertical-align: baseline;">@topperrobotics on instagram </span></p></div></div></div></div></div></div></div><div class="hJDwNd-AhqUyc-OwsYgb Ft7HRd-AhqUyc-OwsYgb JNdkSc SQVYQc L6cTce-purZT L6cTce-pSzOP"><div class="JNdkSc-SmKAyb LkDMRd"><div class="" jscontroller="sGwD4d" jsaction="zXBUYb:zTPCnb;zQF9Uc:Qxe3nd;" jsname="F57UId"></div></div></div></div></div></section></div><div class="Xpil1b xgQ6eb"></div><footer jsname="yePe5c"><section id="h.3bd8c2ad073bfc_3" class="yaqOZd"><div class="IFuOkc"></div><div class="mYVXT"><div class="LS81yb VICjCf j5pSsc db35Fc" tabindex="-1"><div class="hJDwNd-AhqUyc-uQSCkd Ft7HRd-AhqUyc-uQSCkd purZT-AhqUyc-II5mzb ZcASvf-AhqUyc-II5mzb pSzOP-AhqUyc-qWD73c Ktthjf-AhqUyc-qWD73c JNdkSc SQVYQc"><div class="JNdkSc-SmKAyb LkDMRd"><div class="" jscontroller="sGwD4d" jsaction="zXBUYb:zTPCnb;zQF9Uc:Qxe3nd;" jsname="F57UId"><div class="oKdM2c ZZyype Kzv0Me"><div id="h.3bd8c2ad073bfc_0" class="hJDwNd-AhqUyc-uQSCkd Ft7HRd-AhqUyc-uQSCkd jXK9ad D2fZ2 zu5uec OjCsFc dmUFtb wHaque g5GTcb"><div class="jXK9ad-SmKAyb"><div class="tyJCtd mGzaTb Depvyb baZpAe"></div></div></div></div></div></div></div></div></div></section></footer></div></div></div><script nonce="3tw1yTqlbOuPmoMteh7ONQ">DOCS_timing['cov']=new Date().getTime();</script><script id="base-js" nonce="3tw1yTqlbOuPmoMteh7ONQ">var _F_jsUrl = '/_/atari/_/js/k=';
   "use strict";this.default_tk=this.default_tk||{};(function(_){var window=this;
